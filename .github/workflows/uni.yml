@@ -82,14 +82,7 @@ jobs:
             board_csv="$INPUT_LIST"
           elif [[ -f .ci/boards.yml ]]; then
             # Parse YAML with python (no PyYAML required)
-            board_csv=$(python - <<'PY'\
-              import sys, re, json, pathlib, textwrap, ast\
-              import yaml, json, os\
-              boards_yaml=yaml.safe_load(open(".ci/boards.yml"))\
-              lst=[]\
-              for b in boards_yaml.get("boards",[]):\
-                lst.append(b["defconfig"])\
-              print(",".join(lst))PY)\
+            board_csv=$(python - <<'PY'import sys, re, json, pathlib, textwrap, ast; yaml, json, os;boards_yaml=yaml.safe_load(open(".ci/boards.yml"));lst=[];for b in boards_yaml.get("boards",[]):lst.append(b["defconfig"]);print(",".join(lst))PY)
           else
             board_csv="qemu_arm_defconfig"
           fi
