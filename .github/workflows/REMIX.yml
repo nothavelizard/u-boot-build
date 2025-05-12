@@ -53,8 +53,8 @@ jobs:
       id: fw
       run: |
         set -euo pipefail
-        ROCKCHIP_TPL=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1))
-        BL31=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf  | sort | tail -n1))
+        export ROCKCHIP_TPL=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1))
+        export BL31=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf  | sort | tail -n1))
         echo "tpl=$ROCKCHIP_TPL"  >> "$GITHUB_OUTPUT"
         echo "bl31=$BL31" >> "$GITHUB_OUTPUT"
     # ------------------------------------------
