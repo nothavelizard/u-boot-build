@@ -100,6 +100,7 @@ jobs:
             first=0
           done
           json+="]"
+          echo $json
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
   # ------------------------------------------------------------------
   # 2. build ─ Compile each board in the generated matrix.
