@@ -45,47 +45,17 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/rockchip-linux/rkbin.git $RKBIN_DIR
 
-    # 3. Set ROCKCHIP_TPL and BL31 environment variables
-    # ------------------------------------------
-    # 1. Locate firmware blobs  ➜  save outputs
-    # ------------------------------------------
-    - name: Locate Rockchip TPL & BL31
-      id: fw
-      run: |
-        set -euo pipefail
-        export ROCKCHIP_TPL=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1))
-        export BL31=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf  | sort | tail -n1))
-        echo "tpl=$ROCKCHIP_TPL"  >> "$GITHUB_OUTPUT"
-        echo "bl31=$BL31" >> "$GITHUB_OUTPUT"
-    # ------------------------------------------
-    # 3. (Optional but nice) sanity‑check paths
-    # ------------------------------------------
-    - name: Verify firmware paths
-      run: |
-        file "$ROCKCHIP_TPL"
-        file "$BL31"
-    
-    # ------------------------------------------
-    # 4. Configure & build — no inline vars needed
-    # ------------------------------------------
     - name: Configure U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
-      run: make "${{ github.event.inputs.defconfig }}"
-    
-    - name: Build U‑Boot
-      working-directory: ${{ env.UBOOT_DIR }}
-      run: make -j"$(nproc)"
+      run: make CROSS_COMPILE=aarch64-linux-gnu- "${{ github.event.inputs.defconfig }}"
 
-
-    # 5. Build U‑Boot
     - name: Compile U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
       run: |
+        export ROCKCHIP_TPL="$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)"
+        export BL31="$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)"
         make \
-          CROSS_COMPILE=${CROSS_COMPILE} \
-          ROCKCHIP_TPL=${ROCKCHIP_TPL} \
-          BL31=${BL31} \
-          -j"$(nproc)"
+          CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)"
 
 
     # 6. Expose the artifact
