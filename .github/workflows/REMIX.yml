@@ -46,7 +46,7 @@ jobs:
 
     - name: Clone Rockchip firmware binaries
       run: |
-        git clone https://github.com/rockchip-linux/rkbin.git $RKBIN_DIR
+        git clone https://github.com/nothavelizard/rkbin.git $RKBIN_DIR
 
     - name: Configure U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
