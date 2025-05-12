@@ -1,0 +1,76 @@
+name: Build U‑Boot for Quartz64‑A
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "U‑Boot tag (≥ v2023.10); leave blank for 'master'"
+        required: false
+        default: ""
+      defconfig:
+        description: "Board defconfig"
+        required: false
+        default: "quartz64-a-rk3566_defconfig"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest   # x86_64 runner is fine; we cross‑compile
+    env:
+      # Location for sources (relative to ${{ github.workspace }})
+      UBOOT_DIR: u-boot
+      RKBIN_DIR: rkbin
+      CROSS_COMPILE: aarch64-linux-gnu-
+
+    steps:
+    # 1. Set up the tool‑chain & utilities
+    - name: Install build prerequisites
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential git make gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+          device-tree-compiler python3 python3-dev python3-setuptools python3-pyelftools \
+          swig libssl-dev
+
+    # 2. Fetch sources
+    - name: Clone U‑Boot
+      run: |
+        git clone https://source.denx.de/u-boot/u-boot.git $UBOOT_DIR
+        cd $UBOOT_DIR
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          git checkout "${{ github.event.inputs.tag }}"
+        fi
+
+    - name: Clone Rockchip firmware binaries
+      run: |
+        git clone --depth 1 https://github.com/rockchip-linux/rkbin.git $RKBIN_DIR
+
+    # 3. Set ROCKCHIP_TPL and BL31 environment variables
+    - name: Locate firmware binaries
+      id: fw
+      run: |
+        ROCKCHIP_TPL=$(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)
+        BL31=$(ls $RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)
+        echo "ROCKCHIP_TPL=$ROCKCHIP_TPL" >> "$GITHUB_ENV"
+        echo "BL31=$BL31" >> "$GITHUB_ENV"
+
+    # 4. Configure U‑Boot
+    - name: Configure for ${{ github.event.inputs.defconfig }}
+      working-directory: ${{ env.UBOOT_DIR }}
+      run: |
+        make CROSS_COMPILE=${CROSS_COMPILE} ${{ github.event.inputs.defconfig }}
+
+    # 5. Build U‑Boot
+    - name: Compile U‑Boot
+      working-directory: ${{ env.UBOOT_DIR }}
+      run: |
+        make CROSS_COMPILE=${CROSS_COMPILE} -j"$(nproc)"
+      env:
+        ROCKCHIP_TPL: ${{ env.ROCKCHIP_TPL }}
+        BL31: ${{ env.BL31 }}
+
+    # 6. Expose the artifact
+    - name: Upload u‑boot‑rockchip.bin
+      uses: actions/upload-artifact@v4
+      with:
+        name: u-boot-${{ github.event.inputs.defconfig }}
+        path: ${{ env.UBOOT_DIR }}/u-boot-rockchip.bin
