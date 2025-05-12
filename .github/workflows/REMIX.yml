@@ -70,7 +70,7 @@ jobs:
     # ------------------------------------------
     - name: Configure U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
-      run: make "$DEFCONFIG"
+      run: make "${{ github.event.inputs.defconfig }}"
     
     - name: Build U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
