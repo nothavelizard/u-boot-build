@@ -95,7 +95,7 @@ jobs:
           for d in "${arr[@]}"; do
             arch=$(infer_arch "$d")
             if [[ $arch -eq "arm64" ]];then
-              arch=aarm64
+              arch="aarm64"
             fi
             needs_qemu=$( [[ "$d" =~ qemu ]] && echo "true" || echo "false" )
             [[ $first -eq 0 ]] && json+=","
