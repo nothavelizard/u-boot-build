@@ -155,7 +155,7 @@ jobs:
           ENV CCACHE_DIR=/root/.ccache
           WORKDIR /src
           ENTRYPOINT ["bash","-c"]
-DOCKER
+          DOCKER
 
       # -------------------- Restore ccache --------------------
       - name: Restore ccache
