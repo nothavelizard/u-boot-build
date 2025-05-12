@@ -54,6 +54,10 @@ jobs:
 
     - name: Compile U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
+      env:
+        ROCKCHIP_TPL: "$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)"
+        BL31: "$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)"
+        
       run: |
         make \
           CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)"
