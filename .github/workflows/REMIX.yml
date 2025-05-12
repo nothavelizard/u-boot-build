@@ -50,7 +50,11 @@ jobs:
 
     - name: Configure U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
-      run: make CROSS_COMPILE=aarch64-linux-gnu- "${{ github.event.inputs.defconfig }}"
+      run: |
+        ROCKCHIP_TPL="$(ls ../$RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)"
+        BL31="$(ls ../$RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)"
+        TEE="$(ls ../$RKBIN_DIR/bin/rk35/rk3568_bl32_v*.bin | sort | tail -n1)"
+        make CROSS_COMPILE=aarch64-linux-gnu- "${{ github.event.inputs.defconfig }}"
 
     - name: Compile U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
