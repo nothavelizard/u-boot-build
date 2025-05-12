@@ -20,6 +20,8 @@ jobs:
       UBOOT_DIR: u-boot
       RKBIN_DIR: rkbin
       CROSS_COMPILE: aarch64-linux-gnu-
+      ROCKCHIP_TPL: ${{ steps.fw.outputs.tpl }}
+      BL31:         ${{ steps.fw.outputs.bl31 }}
 
     steps:
     # 1. Set up the tool‑chain & utilities
@@ -46,19 +48,37 @@ jobs:
         git clone --depth 1 https://github.com/rockchip-linux/rkbin.git $RKBIN_DIR
 
     # 3. Set ROCKCHIP_TPL and BL31 environment variables
-    - name: Locate firmware binaries
+    # ------------------------------------------
+    # 1. Locate firmware blobs  ➜  save outputs
+    # ------------------------------------------
+    - name: Locate Rockchip TPL & BL31
       id: fw
       run: |
-        ROCKCHIP_TPL=$(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)
-        BL31=$(ls $RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)
-        echo "ROCKCHIP_TPL=$ROCKCHIP_TPL" >> "$GITHUB_ENV"
-        echo "BL31=$BL31" >> "$GITHUB_ENV"
-
-    # 4. Configure U‑Boot
-    - name: Configure for ${{ github.event.inputs.defconfig }}
-      working-directory: ${{ env.UBOOT_DIR }}
+        set -euo pipefail
+        TPL=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1))
+        BL31=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf  | sort | tail -n1))
+        echo "tpl=$TPL"  >> "$GITHUB_OUTPUT"
+        echo "bl31=$BL31" >> "$GITHUB_OUTPUT"
+    
+    # ------------------------------------------
+    # 3. (Optional but nice) sanity‑check paths
+    # ------------------------------------------
+    - name: Verify firmware paths
       run: |
-        make CROSS_COMPILE=${CROSS_COMPILE} ${{ github.event.inputs.defconfig }}
+        file "$ROCKCHIP_TPL"
+        file "$BL31"
+    
+    # ------------------------------------------
+    # 4. Configure & build — no inline vars needed
+    # ------------------------------------------
+    - name: Configure U‑Boot
+      working-directory: ${{ env.UBOOT_DIR }}
+      run: make "$DEFCONFIG"
+    
+    - name: Build U‑Boot
+      working-directory: ${{ env.UBOOT_DIR }}
+      run: make -j"$(nproc)"
+
 
     # 5. Build U‑Boot
     - name: Compile U‑Boot
