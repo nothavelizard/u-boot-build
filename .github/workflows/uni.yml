@@ -1,0 +1,226 @@
+name: build-uboot-universal
+on:
+  # ────────────── Standard triggers ──────────────
+  push:
+    branches: [main, develop, master]
+  pull_request:
+  # ────────────── Manual override ──────────────
+  workflow_dispatch:
+    inputs:
+      # Comma‑separated list of defconfigs.  
+      # Example: "quartz64-a-rk3566_defconfig,rpi_4_defconfig"
+      BOARD_LIST:
+        description: "Board defconfigs (comma separated). Leave blank to use .ci/boards.yml"
+        required: false
+        default: ""
+      # If true, run a headless QEMU boot test for any board whose defconfig contains 'qemu'.
+      QEMU_TEST:
+        description: "Run QEMU smoke‑test where possible"
+        type: boolean
+        default: true
+      # Set to 'docker' to use containerised cross‑compiler, or 'local' for APT toolchains.
+      TOOLCHAIN_MODE:
+        description: "Cross‑compiler source"
+        required: false
+        default: "docker"   # docker | local
+      # Optional URL (or GitHub release asset URL) to download BL31 / TPL blobs.
+      BLOB_URL:
+        description: "Optional tar.gz/zip of proprietary blobs (extracted to rkbin/ or ./blobs)"
+        required: false
+        default: ""
+      # Extra make arguments, e.g. 'KCFLAGS=-Werror'
+      EXTRA_MAKEARGS:
+        description: "Additional make flags"
+        required: false
+        default: "KCFLAGS=-Werror"
+  schedule:
+    - cron: "0 3 * * *"       # nightly at 03:00 UTC
+env:
+  UBOOT_DIR: u-boot
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+# ───────────────────────────── Jobs ─────────────────────────────
+jobs:
+  # ------------------------------------------------------------------
+  # 1. prepare‑matrix ─ Decide which boards we will build.
+  # ------------------------------------------------------------------
+  prepare-matrix:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.build_matrix.outputs.matrix }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      # Determine board list:
+      #   1) If BOARD_LIST input set ⇒ take that.
+      #   2) Else look for .ci/boards.yml in the repo.
+      #   3) Else default to qemu_arm_defconfig (always exists in mainline).
+      - id: build_matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ────────────────────────────────────────────────────────────
+          # Helper: emit JSON array items of shape
+          # { "defconfig": "...", "arch": "...", "needs_qemu": "true|false" }
+          # Arch is inferred from defconfig naming heuristics or overridden
+          # via .ci/boards.yml entries.
+          # ────────────────────────────────────────────────────────────
+          function infer_arch() {
+            case "$1" in
+              *_arm64_*|*rk35*|*rpi_4*)  echo "arm64" ;;
+              *_arm_*|*qemu_arm*|*stm32*) echo "arm" ;;
+              *_x86_*)                    echo "x86" ;;
+              *_mips_*)                   echo "mips" ;;
+              *)                          echo "arm" ;;    # safe default
+            esac
+          }
+
+          INPUT_LIST="${{ github.event.inputs.BOARD_LIST }}"
+          if [[ -n "$INPUT_LIST" ]]; then
+            board_csv="$INPUT_LIST"
+          elif [[ -f .ci/boards.yml ]]; then
+            # Parse YAML with python (no PyYAML required)
+            board_csv=$(python - <<'PY'
+              import sys, re, json, pathlib, textwrap, ast
+              import yaml, json, os
+              boards_yaml=yaml.safe_load(open(".ci/boards.yml"))
+              lst=[]
+              for b in boards_yaml.get("boards",[]):
+                lst.append(b["defconfig"])
+              print(",".join(lst))PY)
+          else
+            board_csv="qemu_arm_defconfig"
+          fi
+          echo "Board list: $board_csv"
+
+          # Build JSON matrix
+          IFS=',' read -ra arr <<<"$board_csv"
+          json="["
+          first=1
+          for d in "${arr[@]}"; do
+            arch=$(infer_arch "$d")
+            needs_qemu=$( [[ "$d" =~ qemu ]] && echo "true" || echo "false" )
+            [[ $first -eq 0 ]] && json+=","
+            json+="{\"defconfig\":\"$d\",\"arch\":\"$arch\",\"needs_qemu\":\"$needs_qemu\"}"
+            first=0
+          done
+          json+="]"
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+  # ------------------------------------------------------------------
+  # 2. build ─ Compile each board in the generated matrix.
+  # ------------------------------------------------------------------
+  build:
+    needs: prepare-matrix
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+
+    env:
+      CROSS_COMPILE: ${{ matrix.arch }}-linux-gnu-
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      # -------------------- Optional blob injection --------------------
+      - name: Download external blobs
+        if: ${{ github.event.inputs.BLOB_URL != '' }}
+        run: |
+          curl -L "$BLOB_URL" -o /tmp/blobs.tar.gz
+          tar -xvf /tmp/blobs.tar.gz
+          echo "Downloaded and extracted blobs."
+
+      # -------------------- Compiler setup --------------------
+      - name: (local) Install cross‑compiler
+        if: ${{ github.event.inputs.TOOLCHAIN_MODE == 'local' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            gcc-${{ matrix.arch }}-linux-gnu \
+            build-essential bison flex libssl-dev bc ca-certificates
+
+      - name: (docker) Build cross‑compiler container
+        if: ${{ github.event.inputs.TOOLCHAIN_MODE == 'docker' }}
+        run: |
+          docker build -t uboot-build-${{ matrix.arch }} - <<'DOCKER'
+          FROM ubuntu:22.04
+          ARG ARCH=${{ matrix.arch }}
+          RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              gcc-${{ matrix.arch }}-linux-gnu bc bison flex libssl-dev make git ca-certificates ccache \
+              && rm -rf /var/lib/apt/lists/*
+          ENV CROSS_COMPILE=${{ matrix.arch }}-linux-gnu-
+          ENV CCACHE_DIR=/root/.ccache
+          WORKDIR /src
+          ENTRYPOINT ["bash","-c"]
+DOCKER
+
+      # -------------------- Restore ccache --------------------
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          key: ccache-${{ matrix.defconfig }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.defconfig }}-
+            ccache-
+
+      # -------------------- Configure & build --------------------
+      - name: Configure + compile (${{ matrix.defconfig }})
+        if: ${{ github.event.inputs.TOOLCHAIN_MODE == 'local' }}
+        run: |
+          cd $UBOOT_DIR
+          make mrproper
+          make ${{ matrix.defconfig }}
+          make ${{ github.event.inputs.EXTRA_MAKEARGS }} -j$(nproc)
+
+      - name: Configure + compile (${{ matrix.defconfig }}) in container
+        if: ${{ github.event.inputs.TOOLCHAIN_MODE == 'docker' }}
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/src \
+            -v $CCACHE_DIR:/root/.ccache \
+            -e BOARD=${{ matrix.defconfig }} \
+            -e EXTRA='${{ github.event.inputs.EXTRA_MAKEARGS }}' \
+            uboot-build-${{ matrix.arch }} \
+            "cd u-boot && make mrproper && make \$BOARD && make \$EXTRA -j\$(nproc)"
+
+      # -------------------- Archive artefacts --------------------
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: u-boot-${{ matrix.defconfig }}
+          retention-days: 30
+          path: |
+            ${{ env.UBOOT_DIR }}/u-boot*
+            ${{ env.UBOOT_DIR }}/spl/u-boot-spl*
+
+      # -------------------- QEMU smoke‑test --------------------
+      - name: Install QEMU
+        if: ${{ matrix.needs_qemu == 'true' && github.event.inputs.QEMU_TEST == 'true' }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y qemu-system-arm
+
+      - name: Run headless QEMU boot test
+        if: ${{ matrix.needs_qemu == 'true' && github.event.inputs.QEMU_TEST == 'true' }}
+        run: |
+          qemu-system-arm -M virt -nographic \
+            -bios ${{ env.UBOOT_DIR }}/u-boot.bin \
+            -serial mon:stdio \
+            -no-reboot \
+            | tee /tmp/uboot-log.txt &
+          # Wait up to 20 s for banner
+          for i in {1..20}; do
+            sleep 1
+            if grep -q "U-Boot" /tmp/uboot-log.txt; then
+              echo "✅ U‑Boot prompt detected." && exit 0
+            fi
+          done
+          echo "❌ U‑Boot prompt not detected!" && exit 1
+
+      # -------------------- Save updated ccache --------------------
+      - name: Save ccache
+        uses: actions/cache/save@v4
+        with:
+          key: ccache-${{ matrix.defconfig }}-${{ github.sha }}
+          path: $CCACHE_DIR
