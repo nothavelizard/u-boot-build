@@ -20,8 +20,6 @@ jobs:
       UBOOT_DIR: u-boot
       RKBIN_DIR: rkbin
       CROSS_COMPILE: aarch64-linux-gnu-
-      ROCKCHIP_TPL: ${{ steps.fw.outputs.tpl }}
-      BL31:         ${{ steps.fw.outputs.bl31 }}
 
     steps:
     # 1. Set up the tool‑chain & utilities
@@ -55,11 +53,10 @@ jobs:
       id: fw
       run: |
         set -euo pipefail
-        TPL=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1))
+        ROCKCHIP_TPL=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1))
         BL31=$(realpath $(ls $RKBIN_DIR/bin/rk35/rk3568_bl31_v*.elf  | sort | tail -n1))
-        echo "tpl=$TPL"  >> "$GITHUB_OUTPUT"
+        echo "tpl=$ROCKCHIP_TPL"  >> "$GITHUB_OUTPUT"
         echo "bl31=$BL31" >> "$GITHUB_OUTPUT"
-    
     # ------------------------------------------
     # 3. (Optional but nice) sanity‑check paths
     # ------------------------------------------
