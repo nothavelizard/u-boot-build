@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest   # x86_64 runner is fine; we cross‑compile
     env:
       # Location for sources (relative to ${{ github.workspace }})
-      UBOOT_DIR: u-boot
-      RKBIN_DIR: rkbin
+      UBOOT_DIR: ~/u-boot
+      RKBIN_DIR: ~/rkbin
       CROSS_COMPILE: aarch64-linux-gnu-
       ROCKCHIP_TPL: "$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)"
       BL31: "$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)"
