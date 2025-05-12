@@ -20,6 +20,9 @@ jobs:
       UBOOT_DIR: u-boot
       RKBIN_DIR: rkbin
       CROSS_COMPILE: aarch64-linux-gnu-
+      ROCKCHIP_TPL: "$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)"
+      BL31: "$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)"
+      
 
     steps:
     # 1. Set up the tool‑chain & utilities
@@ -52,8 +55,6 @@ jobs:
     - name: Compile U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
       run: |
-        export ROCKCHIP_TPL="$(ls ../rkbin/bin/rk35/rk3566_ddr_1056MHz_v*.bin | sort | tail -n1)"
-        export BL31="$(ls ../rkbin/bin/rk35/rk3568_bl31_v*.elf | sort | tail -n1)"
         make \
           CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)"
 
