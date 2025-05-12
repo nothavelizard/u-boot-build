@@ -64,10 +64,12 @@ jobs:
     - name: Compile U‑Boot
       working-directory: ${{ env.UBOOT_DIR }}
       run: |
-        make CROSS_COMPILE=${CROSS_COMPILE} -j"$(nproc)"
-      env:
-        ROCKCHIP_TPL: ${{ env.ROCKCHIP_TPL }}
-        BL31: ${{ env.BL31 }}
+        make \
+          CROSS_COMPILE=${CROSS_COMPILE} \
+          ROCKCHIP_TPL=${ROCKCHIP_TPL} \
+          BL31=${BL31} \
+          -j"$(nproc)"
+
 
     # 6. Expose the artifact
     - name: Upload u‑boot‑rockchip.bin
